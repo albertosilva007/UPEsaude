@@ -3,81 +3,125 @@ import pandas as pd
 import plotly.express as px
 
 # Carregar os dados
+
+
 @st.cache_data
 def carregar_dados():
-    df = pd.read_csv('dadossaude.csv', skiprows=1)
-    df.columns = [f'Coluna{i+1}' for i in range(df.shape[1])]  # Nomeia as colunas corretamente
+    df = pd.read_csv('global_cancer_patients_2015_2024.csv')
     return df
 
+
+# Carregar o DataFrame
 df = carregar_dados()
 
-# Título
-st.title("📊 Análise de Indicadores de Saúde")
+# Título do App
+st.title("🌎 Análise Global de Pacientes com Câncer (2015-2024)")
 
-# Introdução
 st.markdown("""
-Este projeto visa analisar um conjunto de indicadores de saúde, buscando identificar padrões, e sugerir melhorias para a gestão pública.
+Este projeto explora a relação entre tipos de câncer, distribuição geográfica e custo de tratamento em escala global entre 2015 e 2024.
 """)
 
-st.header("🎯 Filtros de Dados")
+# Barra lateral para filtros
+st.sidebar.header("Filtros")
+paises = sorted(df['Country_Region'].unique())
+tipos_cancer = sorted(df['Cancer_Type'].unique())
+estagios_cancer = sorted(df['Cancer_Stage'].unique())
 
-# --- NOVO: Adicionar Filtros
-col1, col2 = st.columns(2)
+selecao_pais = st.sidebar.multiselect(
+    "Filtrar por País/Região", paises, default=paises)
+selecao_cancer = st.sidebar.multiselect(
+    "Filtrar por Tipo de Câncer", tipos_cancer, default=tipos_cancer)
+selecao_estagio = st.sidebar.multiselect(
+    "Filtrar por Estágio do Câncer", estagios_cancer, default=estagios_cancer)
 
+# Filtrar os dados com base nas seleções
+df_filtrado = df[df['Country_Region'].isin(selecao_pais) &
+                 df['Cancer_Type'].isin(selecao_cancer) &
+                 df['Cancer_Stage'].isin(selecao_estagio)]
+
+# Visão Geral dos Dados Filtrados
+st.header("🔍 Visão Geral dos Dados Filtrados")
+st.dataframe(df_filtrado.head())
+
+# Métricas Chave
+st.header("📊 Métricas Chave")
+col1, col2, col3 = st.columns(3)
 with col1:
-    coluna_filtro = st.selectbox('Deseja filtrar por qual coluna?', df.columns)
+    total_pacientes = df_filtrado.shape[0]
+    st.metric("Total de Pacientes", total_pacientes)
 with col2:
-    if df[coluna_filtro].dtype in ['int64', 'float64']:
-        valor_min, valor_max = st.slider(
-            f'Selecione o intervalo para {coluna_filtro}:',
-            float(df[coluna_filtro].min()), 
-            float(df[coluna_filtro].max()), 
-            (float(df[coluna_filtro].min()), float(df[coluna_filtro].max()))
-        )
-        df = df[(df[coluna_filtro] >= valor_min) & (df[coluna_filtro] <= valor_max)]
-    else:
-        categorias = df[coluna_filtro].dropna().unique()
-        selecao = st.multiselect(f'Selecione os valores para {coluna_filtro}:', categorias, default=list(categorias))
-        df = df[df[coluna_filtro].isin(selecao)]
+    media_custo = df_filtrado['Treatment_Cost_USD'].mean()
+    st.metric("Custo Médio de Tratamento (USD)", f"{media_custo:,.2f}")
+with col3:
+    media_sobrevida = df_filtrado['Survival_Years'].mean()
+    st.metric("Sobrevida Média (Anos)", f"{media_sobrevida:.2f}")
 
-# Gráfico 1 - Distribuição de uma coluna
-st.header("📈 Visualizações dos Indicadores")
-coluna_escolhida = st.selectbox('Escolha uma coluna para visualizar a distribuição:', df.columns)
-fig1 = px.histogram(df, x=coluna_escolhida, nbins=30, title=f'Distribuição de {coluna_escolhida}')
-fig1.update_layout(bargap=0.1)
-st.plotly_chart(fig1, use_container_width=True)
+# Gráfico: Número de Pacientes por País (Filtrado)
+st.header("📍 Distribuição de Pacientes por País/Região (Filtrado)")
+fig_pais = px.histogram(
+    df_filtrado,
+    x="Country_Region",
+    title="Número de Pacientes por País/Região",
+    color_discrete_sequence=["indianred"]
+)
+fig_pais.update_layout(xaxis_title="País/Região",
+                       yaxis_title="Número de Pacientes")
+st.plotly_chart(fig_pais)
 
-# Gráfico 2 - Comparativo entre duas colunas
-st.subheader("📊 Comparativo entre Indicadores")
-coluna_x = st.selectbox('Coluna para eixo X', df.columns, index=0, key='x')
-coluna_y = st.selectbox('Coluna para eixo Y', df.columns, index=1, key='y')
+# Gráfico: Tipos de Câncer Mais Frequentes (Filtrado)
+st.header("🧬 Tipos de Câncer Mais Frequentes (Filtrado)")
+fig_cancer = px.histogram(
+    df_filtrado,
+    x="Cancer_Type",
+    title="Tipos de Câncer",
+    color_discrete_sequence=["teal"]
+)
+fig_cancer.update_layout(xaxis_title="Tipo de Câncer", yaxis_title="Contagem")
+st.plotly_chart(fig_cancer)
 
-if coluna_x != coluna_y:
-    fig2 = px.scatter(
-        df, 
-        x=coluna_x, 
-        y=coluna_y, 
-        title=f'Relação entre {coluna_x} e {coluna_y}',
-        opacity=0.7,
-        color_discrete_sequence=['#636EFA']  # cor azul legal
-    )
-    fig2.update_traces(marker=dict(size=10, line=dict(width=1, color='DarkSlateGrey')))
-    st.plotly_chart(fig2, use_container_width=True)
-else:
-    st.warning("Por favor, selecione colunas diferentes para o comparativo.")
+# Relação entre Custo de Tratamento e Sobrevivência (Filtrado)
+st.header("💸 Custo de Tratamento vs Anos de Sobrevivência (Filtrado)")
+fig_custo = px.scatter(
+    df_filtrado,
+    x="Treatment_Cost_USD",
+    y="Survival_Years",
+    color="Cancer_Stage",
+    title="Custo de Tratamento vs Anos de Sobrevivência",
+    labels={
+        "Treatment_Cost_USD": "Custo do Tratamento (USD)",
+        "Survival_Years": "Anos de Sobrevivência",
+        "Cancer_Stage": "Estágio do Câncer"
+    }
+)
+fig_custo.update_traces(marker=dict(size=8))
+st.plotly_chart(fig_custo)
 
-# Estatísticas descritivas
-st.header("📋 Resumo Estatístico")
-st.dataframe(df.describe())
+# Análise Adicional: Custo Médio por Tipo de Câncer
+st.header("💰 Custo Médio de Tratamento por Tipo de Câncer")
+custo_medio_cancer = df_filtrado.groupby('Cancer_Type')[
+    'Treatment_Cost_USD'].mean().sort_values(ascending=False).reset_index()
+fig_custo_cancer = px.bar(
+    custo_medio_cancer,
+    x='Cancer_Type',
+    y='Treatment_Cost_USD',
+    title='Custo Médio de Tratamento por Tipo de Câncer',
+    labels={
+        'Treatment_Cost_USD': 'Custo Médio (USD)', 'Cancer_Type': 'Tipo de Câncer'},
+    color_discrete_sequence=["goldenrod"]
+)
+st.plotly_chart(fig_custo_cancer)
 
-# Conclusão
-st.header("💡 Conclusões e Possíveis Soluções")
-st.markdown("""
-- 🔍 **Identificação de Indicadores Críticos**: Colunas com altos desvios ou médias elevadas podem indicar áreas problemáticas.
-- 📊 **Correlações Relevantes**: Indicadores fortemente correlacionados sugerem onde intervir primeiro.
-- 🌍 **Próximos passos**: Investigar os locais/regiões associadas às piores performances para políticas de saúde mais eficazes.
-
-✨ Esta análise é apenas o começo! Novas fontes e integrações podem gerar insights ainda mais profundos.
-""")
-
-st.caption("Projeto desenvolvido para o Desafio de Visualização de Dados com Streamlit - 2025")
+# Análise Adicional: Sobrevida Média por Estágio do Câncer
+st.header("⏳ Sobrevida Média por Estágio do Câncer")
+sobrevida_media_estagio = df_filtrado.groupby(
+    'Cancer_Stage')['Survival_Years'].mean().sort_values().reset_index()
+fig_sobrevida_estagio = px.bar(
+    sobrevida_media_estagio,
+    x='Cancer_Stage',
+    y='Survival_Years',
+    title='Sobrevida Média por Estágio do Câncer',
+    labels={
+        'Survival_Years': 'Sobrevida Média (Anos)', 'Cancer_Stage': 'Estágio do Câncer'},
+    color_discrete_sequence=["mediumseagreen"]
+)
+st.plotly_chart(fig_sobrevida_estagio)
